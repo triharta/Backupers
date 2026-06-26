@@ -9,7 +9,7 @@
     "backup:id": "node src/backup.js",
     "interactive": "node src/index.js",
     "dev": "node --watch src/backup.js",
-"drive": "node 9drive.js"
+    "drive": "node 9drive.js"
   },
   "keywords": [
     "olt",
@@ -21,6 +21,7 @@
   "dependencies": {
     "basic-ftp": "^5.0.5",
     "dotenv": "^17.4.2",
+    "express": "^5.2.1",
     "mysql2": "^3.22.5",
     "node-fetch": "^3.3.2"
   }

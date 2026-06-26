@@ -19,6 +19,26 @@ if (!API_KEY || !FOLDER_ID || !SOURCE_DIR) {
   process.exit(1);
 }
 
+async function getExistingFiles() {
+  const url = `${API_URL.replace(/\/uploads$/, "")}/files?folderId=${FOLDER_ID}`;
+  const res = await fetch(url, {
+    method: "GET",
+    headers: { "X-API-Key": API_KEY },
+  });
+  if (!res.ok) return [];
+  const result = await res.json();
+  return result.files || [];
+}
+
+async function deleteFile(fileId) {
+  const url = `${API_URL.replace(/\/uploads$/, "")}/files/${fileId}`;
+  const res = await fetch(url, {
+    method: "DELETE",
+    headers: { "X-API-Key": API_KEY },
+  });
+  return res.ok;
+}
+
 async function uploadFiles() {
   const dir = path.resolve(SOURCE_DIR);
   let files;
@@ -40,6 +60,12 @@ async function uploadFiles() {
 
   console.log(`Ditemukan ${filePaths.length} file di ${dir}\n`);
 
+  const existingFiles = await getExistingFiles();
+  const nameToId = {};
+  for (const ef of existingFiles) {
+    nameToId[ef.name] = ef.id;
+  }
+
   const formData = new FormData();
   formData.append("folderId", FOLDER_ID);
 
@@ -58,6 +84,13 @@ async function uploadFiles() {
   if (statsList.length === 0) {
     console.log("Tidak ada file reguler untuk diupload.");
     return;
+  }
+
+  for (const s of statsList) {
+    if (nameToId[s.name]) {
+      console.log(`   ${s.name}: menghapus file lama...`);
+      await deleteFile(nameToId[s.name]);
+    }
   }
 
   console.log("Mengupload file...");
