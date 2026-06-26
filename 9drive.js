@@ -5,11 +5,31 @@ import "dotenv/config";
 import fs from "fs/promises";
 import path from "path";
 import fetch from "node-fetch";
+import mysql from "mysql2/promise";
 
 const API_URL = process.env.DRIVE_API_URL || "https://api-9drive.projektobi.my.id/uploads";
 const API_KEY = process.env.DRIVE_API_KEY;
 const FOLDER_ID = process.env.DRIVE_FOLDER_ID;
 const SOURCE_DIR = process.env.DRIVE_SOURCE_DIR;
+
+const DB_HOST = process.env.DB_HOST;
+const DB_NAME = process.env.DB_NAME;
+const DB_USER = process.env.DB_USER;
+const DB_PASS = process.env.DB_PASS;
+
+let dbPool = null;
+if (DB_HOST && DB_NAME && DB_USER && DB_PASS !== undefined) {
+  dbPool = mysql.createPool({
+    host: DB_HOST,
+    database: DB_NAME,
+    user: DB_USER,
+    password: DB_PASS,
+    waitForConnections: true,
+    connectionLimit: 4,
+    namedPlaceholders: true,
+    charset: "utf8mb4",
+  });
+}
 
 const UPLOAD_SCHEDULE_ENABLED = (process.env.UPLOAD_SCHEDULE_ENABLED ?? "1") !== "0";
 const UPLOAD_DAILY_TIME = process.env.UPLOAD_DAILY_TIME || "07:00";
@@ -37,6 +57,40 @@ async function deleteFile(fileId) {
     headers: { "X-API-Key": API_KEY },
   });
   return res.ok;
+}
+
+function buildFileIdMap(responseData) {
+  const map = {};
+  const raw = responseData?.files || responseData?.data || [];
+  for (const item of raw) {
+    if (item.name && item.id) {
+      map[item.name] = item.id;
+    }
+  }
+  return map;
+}
+
+async function recordUploads(files, responseData) {
+  if (!dbPool) return;
+  const fileIdMap = buildFileIdMap(responseData);
+  const conn = await dbPool.getConnection();
+  try {
+    const sql = `INSERT INTO drive_files (file_name, file_size, file_id, folder_id, upload_status, response_data) VALUES (?, ?, ?, ?, 'success', ?)`;
+    for (const f of files) {
+      await conn.execute(sql, [
+        f.name,
+        f.size,
+        fileIdMap[f.name] || null,
+        FOLDER_ID,
+        JSON.stringify(responseData || {}),
+      ]);
+    }
+    console.log(`   ${files.length} record(s) tersimpan di database.`);
+  } catch (err) {
+    console.error(`   Gagal menyimpan ke database: ${err.message}`);
+  } finally {
+    conn.release();
+  }
 }
 
 async function uploadFiles() {
@@ -111,11 +165,12 @@ async function uploadFiles() {
   }
 
   console.log(`\nUpload berhasil! ${statsList.length} file terkirim.`);
+  await recordUploads(statsList, result);
   console.log(JSON.stringify(result, null, 2));
 }
 
 function scheduleDailyUpload() {
-  const [hhStr, mmStr] = UPLOAD_DAILY_TIME.split(":");
+  const [hhStr, mmStr] = UPLOAD_DAILY_TIME.split(/[:.]/);
   const targetHour = Math.max(0, Math.min(23, parseInt(hhStr, 10) || 7));
   const targetMin = Math.max(0, Math.min(59, parseInt(mmStr, 10) || 0));
 
