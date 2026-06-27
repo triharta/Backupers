@@ -10,7 +10,8 @@
     "backup:id": "node src/backup.js",
     "interactive": "node src/index.js",
     "dev": "node --watch src/backup.js",
-    "drive": "node 9drive.js"
+    "drive": "node 9drive.js",
+    "sync:drive": "node sync-drive.js"
   },
   "keywords": [
     "olt",
